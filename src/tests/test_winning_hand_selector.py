@@ -1,5 +1,5 @@
 import pytest
-from utils.select_winner import WinningHandSelector
+from utils.WinningHandSelector import WinningHandSelector
 
 
 # Common test data
