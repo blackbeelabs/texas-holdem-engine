@@ -2,8 +2,6 @@ from typing import List, Optional
 from random import shuffle
 from engine.constants import VALID_CARDS
 
-fr
-
 
 class Card:
     def __init__(self, card_name: str, short_name: str):
@@ -15,7 +13,15 @@ class Card:
         self.rank_numerical_value = int(short_name.split("-")[-1])
 
     def __str__(self) -> str:
-        return f"Card(rank={self.rank}, suit={self.suit}, card_name={self.card_name}, rank_value={self.rank_numerical_value})"
+        return str(self.to_dict())
+
+    def to_dict(self):
+        return {
+            "rank": self.rank,
+            "suit": self.suit,
+            "card_name": self.card_name,
+            "rank_value": self.rank_numerical_value,
+        }
 
 
 class Deck:
@@ -57,5 +63,11 @@ class Deck:
         """Return the number of cards remaining in the deck"""
         return len(self.cards)
 
+    def get_deck_as_list(self) -> List[Card]:
+        return [str(card) for card in self.cards]
+
     def __str__(self) -> str:
-        return f"Deck(cards={self.cards})"
+        return f"Deck(cards={self.get_deck_as_list()})"
+
+    def to_dict(self) -> dict:
+        return {"cards": self.get_deck_as_list()}

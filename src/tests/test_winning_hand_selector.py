@@ -1,5 +1,8 @@
 import pytest
-from utils.WinningHandSelector import WinningHandSelector
+from engine.single_game import (
+    SingleGame,
+)
+    WinningHandSelector
 
 
 # Common test data
