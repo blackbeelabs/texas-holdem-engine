@@ -1,28 +1,29 @@
-from engine.player import Player
-from engine.single_game import SingleGame
+from engine.classes.Player import Player
+from engine.classes.Deck import Deck
+from engine.classes.SingleGame import SingleGame, PlayerAction
 
-from engine.constants import VALID_CARDS
+from engine.classes.Card import VALID_CARDS
 
 
 def test_single_game_has_all_cards(game):
-    test_deck = []
+    test_deck = Deck(new_deck=False)
+    # Player's hands
     for player in game.players:
-        for card in player.hand:
-            test_deck.append(card.card_name)
-    print(len(test_deck))
+        for card in player.hand.cards:
+            test_deck.add_card(card)
+    # Community cards
     for card in game.community_cards:
-        test_deck.append(card.card_name)
-    print(len(test_deck))
+        test_deck.add_card(card)
+    # Discard pile
     for card in game.discard_pile:
-        test_deck.append(card.card_name)
-    print(len(test_deck))
+        test_deck.add_card(card)
+    # Remaining deck
     for card in game.deck.cards:
-        test_deck.append(card.card_name)
-    print(len(test_deck))
-    print(test_deck)
-    assert len(test_deck) == 52
-    assert len(set(test_deck)) == 52
-    assert set(test_deck) == set(VALID_CARDS.keys())
+        test_deck.add_card(card)
+    assert test_deck.get_deck_size() == 52
+    assert set([card.verbose_name for card in test_deck.cards]) == set(
+        VALID_CARDS.keys()
+    )
 
 
 if __name__ == "__main__":

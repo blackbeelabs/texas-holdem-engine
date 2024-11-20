@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple
 from collections import Counter
 from enum import Enum, auto
 
-from constants.constants import VALID_CARD_SUITS, VALID_CARD_FACES, VALID_CARDS
+from engine.constants import VALID_CARD_SUITS, VALID_CARD_RANKS, VALID_CARDS
 
 
 class HandRank(Enum):
