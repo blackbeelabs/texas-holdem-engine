@@ -9,7 +9,7 @@ class Deck:
         if new_deck:
             self.cards = [
                 Card(card_name, card_face_rank, card_face_suit)
-                for card_name, [card_face_rank, card_face_suit] in VALID_CARDS.items()
+                for card_name, [card_face_rank, card_face_suit] in VALID_CARDS
             ]
         if not do_not_shuffle:
             self._shuffle()

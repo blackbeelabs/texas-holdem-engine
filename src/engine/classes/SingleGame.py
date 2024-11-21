@@ -38,18 +38,19 @@ class Bet:
 class SingleGame:
     def __init__(
         self,
-        small_blind_position: int = 0,
-        small_blind_bet: int = 10,
         big_blind_bet: int = 20,
     ):
         # About the blinds
-        self.small_blind_bet: int = small_blind_bet
+        assert big_blind_bet > 0, "Big blind bet must be greater than 0"
+        assert big_blind_bet % 2 == 0, "Big blind bet must be even"
         self.big_blind_bet: int = big_blind_bet
+        self.small_blind_bet: int = big_blind_bet / 2
         # About the players
-        self.players: List[Player] = []
-        self.original_betting_street_players: List[Player] = []
-        self.betting_street_players: List[Player] = []
-
+        self.all_players: List[Player] = (
+            []
+        )  # Already has the order for the full betting street
+        self.active_players: List[Player] = []
+        self.current_betting_street_players: List[Player] = []
         # About the deck
         self.deck = Deck()
         # About the betting round, the active players, and the discard pile
@@ -62,21 +63,43 @@ class SingleGame:
         self.current_bet: int = 0
         self.last_raiser_player_index: Optional[int] = None
         self.bets_per_player: Dict[Player, int] = {}
+        logger.info("Game initialized.")
+
+    def _log_state_in_debug_mode(self):
+        logger.debug(f"Current betting round: {self.current_betting_round.value}")
+        logger.debug(
+            f"Active players: {[player.player_id for player in self.active_players]}"
+        )
+        logger.debug(
+            f"Betting street: {[player.player_id for player in self.current_betting_street_players]}"
+        )
+        logger.debug(f"Bets: {str(self.bets)}")
+        logger.debug(f"Pot: {self.get_pot()}")
+        logger.debug(
+            f"Stacks per player in current round: {self._stacks_per_player_in_current_round()}"
+        )
 
     def register_player(self, player: Player):
         """Register a player to the game"""
         player.update_is_active(True)
-        self.players.append(player)
-        self.original_betting_street_players.append(player)
-        self.betting_street_players.append(player)
+        self.all_players.append(player)
         logger.info(
             f"Player {player.player_id} ({player.player_name}) has joined the game."
+        )
+        logger.debug(
+            f"All players: {[player.player_id for player in self.all_players]}"
         )
 
     def register_players(self, players: List[Player]):
         """Register multiple players to the game"""
         for player in players:
             self.register_player(player)
+
+    def set_active_players(self):
+        """Set the active players"""
+        self.active_players = [
+            player for player in self.all_players if player.is_active
+        ]
 
     def place_bet(self, player: Player, action: PlayerAction, amount: int):
         """Place a bet"""
@@ -103,24 +126,8 @@ class SingleGame:
             self.get_next_actionable_player(), PlayerAction.BLIND, self.big_blind_bet
         )
 
-    def _log_state_in_debug_mode(self):
-        logger.debug(f"Pot: {self.get_pot()}")
-        logger.debug(f"Current betting round: {self.current_betting_round.value}")
-        logger.debug(
-            f"Bets: {[str(bet) for bet in self.bets[self.current_betting_round.value]]}"
-        )
-        logger.debug(
-            f"Stacks per player in current round: {self._stacks_per_player_in_current_round()}"
-        )
-        logger.debug(
-            f"Betting street: {[player.player_id for player in self.betting_street_players]}"
-        )
-
     def post_blinds(self):
-        logger.debug(
-            f"Original betting street: {[player.player_id for player in self.original_betting_street_players]}"
-        )
-        if len(self.players) < 2:
+        if len(self.active_players) < 2:
             raise ValueError("Not enough players to start a round")
         """Post small blind"""
         self._post_small_blind()
@@ -138,9 +145,9 @@ class SingleGame:
     def deal_hole_cards(self):
         """Deal two cards to each player"""
         for _ in range(2):
-            for player in self.players:
+            for player in self.active_players:
                 self.deal_card_to_player(player)
-        logger.info(f"Dealt hole cards to {len(self.players)} players")
+        logger.info(f"Dealt hole cards to {len(self.active_players)} players")
 
     def discard_card(self):
         """Discard a card"""
@@ -160,7 +167,7 @@ class SingleGame:
     ):
         # Validate if player_id is in the game
         if not player_id in [
-            player.player_id for player in self.original_betting_street_players
+            player.player_id for player in self.current_betting_street_players
         ]:
             logger.error(
                 f"Error processing player action: Player {player_id} is not in the game."
@@ -188,7 +195,7 @@ class SingleGame:
                     if bet.player == player
                 ]
             )
-            for player in self.players
+            for player in self.active_players
         }
 
     def process_player_action(
@@ -260,11 +267,14 @@ class SingleGame:
             self.discard_card()
             self.deal_community_card()
 
-    def reset_betting_street(self):
-        """Reset betting tracking for a new street"""
-        self.current_bet = 0
-        self.last_raiser_player_index = None
-        self.bets_per_player = {}
+    def reset_betting_street_for_new_round(self):
+        """Reset betting tracking for a new round"""
+        for player in self.active_players:
+            player.yet_to_act()
+        self.current_betting_street_players = [
+            player for player in self.all_players if player.is_active
+        ]
+        self._log_state_in_debug_mode()
 
     def add_player_to_end_of_betting_street(self, player: Player):
         """Add a player to the end of the betting street"""
@@ -279,7 +289,7 @@ class SingleGame:
         ):
             self.betting_street_players = [
                 player
-                for player in self.betting_street_players
+                for player in self.current_betting_street_players
                 if (player.is_active and not player.has_acted)
             ]
 
@@ -288,9 +298,15 @@ class SingleGame:
 
         if self.current_betting_round == BettingRound.NOTSTARTED:
             logger.info(
-                f"Betting round advancing from {BettingRound.NOTSTARTED.value} to {BettingRound.PREFLOP.value}."
+                f"Game starting. Betting round advancing from "
+                + f"{BettingRound.NOTSTARTED.value} to "
+                + f"{BettingRound.PREFLOP.value}."
             )
             self.current_betting_round = BettingRound.PREFLOP
+            # Enlist all players to the list active players
+            self.set_active_players()
+            # Reset betting street
+            self.reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.PREFLOP:
             logger.info(
                 f"Betting round advancing from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}."
@@ -310,6 +326,7 @@ class SingleGame:
                 f"Betting round advancing from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}."
             )
             self.current_betting_round = BettingRound.FLOP
+            self.reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.FLOP:
             logger.info(
                 f"Betting round advancing from {BettingRound.FLOP.value} to {BettingRound.TURN.value}."
@@ -332,7 +349,7 @@ class SingleGame:
 
     def get_next_actionable_player(self):
         """Get the next actionable player"""
-        return self.betting_street_players[0]
+        return self.current_betting_street_players[0]
 
     def get_remaining_betting_street(self) -> List[int]:
         """Get the remaining player actions for the current betting round"""
@@ -351,7 +368,11 @@ class SingleGame:
 
     def get_pot(self):
         """Get the total amount in the pot"""
-        return sum([bet.amount for bet in self.bets[self.current_betting_round.value]])
+        if len(self.bets) == 0:
+            return 0
+        return sum(
+            [bet.amount for bet in self.bets.get(self.current_betting_round.value, [])]
+        )
 
     def get_last_raiser_index(self):
         """Get the index of the last player who raised"""
