@@ -40,9 +40,15 @@ class Deck:
         """Return the number of cards remaining in the deck"""
         return len(self.cards)
 
+    def get_cards(self) -> List[Card]:
+        """Return the list of cards remaining in the deck"""
+        return self.cards
+
     def _get_cards_as_list(self) -> List[str]:
         """use str() if not you'll get only the card address"""
         return [str(card) for card in self.cards]
 
     def __str__(self) -> str:
-        return f"Deck({self._get_cards_as_list()})"
+        if self.empty():
+            return "Deck([])"
+        return f"Deck([{', '.join(self._get_cards_as_list())}])"

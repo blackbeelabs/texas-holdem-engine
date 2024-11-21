@@ -13,8 +13,8 @@ def test_init_do_not_shuffle():
     deck = Deck(do_not_shuffle=True)
     assert deck.get_deck_size() == 52
     print([str(card) for card in deck.cards])
-    assert deck.cards[0].verbose_name == "2-Club"
-    assert deck.cards[-1].verbose_name == "A-Spade"
+    assert deck.cards[0].verbose_name == "2 Club"
+    assert deck.cards[-1].verbose_name == "A Spade"
 
 
 def test_init_empty_deck():
@@ -45,10 +45,10 @@ def test_deal_empty_deck():
 
 def test_add_card():
     deck = Deck(new_deck=False)
-    card = Card("2-Club", "2", "C")
+    card = Card("2 Club", 2, "C")
     deck.add_card(card)
     assert deck.get_deck_size() == 1
-    assert str(deck.cards[0].verbose_name) == "2-Club"
+    assert str(deck.cards[0].verbose_name) == "2 Club"
 
 
 def test_empty():

@@ -93,6 +93,9 @@ class Player:
     def __str__(self):
         return str(self.to_dict())
 
+    def get_hand(self) -> Deck:
+        return self.hand
+
     def _get_hand_as_list(self):
         return [str(card) for card in self.hand.cards]
 

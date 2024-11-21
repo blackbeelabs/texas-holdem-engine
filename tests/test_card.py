@@ -31,7 +31,5 @@ def test_card_to_dict(card_name, rank, suit):
 )
 def test_card_str_representation(card_name, rank, suit):
     card = Card(card_name, rank, suit)
-    expected_str = (
-        f"Card({{'card_name': '{card_name}', 'rank': {rank}, 'suit': '{suit}'}})"
-    )
+    expected_str = f'Card(card_name="{card_name}",rank={rank},suit="{suit}")'
     assert str(card) == expected_str

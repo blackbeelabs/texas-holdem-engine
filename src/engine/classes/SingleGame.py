@@ -55,8 +55,8 @@ class SingleGame:
         self.deck = Deck()
         # About the betting round, the active players, and the discard pile
         self.current_betting_round = BettingRound.NOTSTARTED
-        self.discard_pile: List[Card] = []
-        self.community_cards: List[Card] = []
+        self.discard_pile: Deck = Deck(new_deck=False)
+        self.community_cards: Deck = Deck(new_deck=False)
         # About the bets
         self.bets: Dict[str, List[Bet]] = {}
         # ...to handle re-raising
@@ -94,6 +94,7 @@ class SingleGame:
         """Register multiple players to the game"""
         for player in players:
             self.register_player(player)
+        logger.info(f"Registered {len(players)} players to the game.")
 
     def set_active_players(self):
         """Set the active players"""
@@ -151,12 +152,12 @@ class SingleGame:
 
     def discard_card(self):
         """Discard a card"""
-        self.discard_pile.append(self.deck.deal())
+        self.discard_pile.add_card(self.deck.deal())
         logger.info(f"Discarded 1 card")
 
     def deal_community_card(self):
         """Deal a community card"""
-        self.community_cards.append(self.deck.deal())
+        self.community_cards.add_card(self.deck.deal())
         logger.info(f"Dealt 1 community card")
 
     def _update_betting_street_on_raise(self, player: Player, amount: int):
@@ -241,19 +242,18 @@ class SingleGame:
         def _check_community_cards_against_betting_round():
             if (
                 self.current_betting_round == BettingRound.PREFLOP
-                or self.current_betting_round == BettingRound.NEWGAME
                 or self.current_betting_round == BettingRound.NOTSTARTED
                 or self.current_betting_round == BettingRound.ENDED
             ):
                 raise ValueError("Community cards cannot be dealt before the flop")
             elif self.current_betting_round == BettingRound.FLOP:
-                if len(self.community_cards) == 3:
+                if self.community_cards.get_deck_size() == 3:
                     raise ValueError("Flop already dealt")
             elif self.current_betting_round == BettingRound.TURN:
-                if len(self.community_cards) == 4:
+                if self.community_cards.get_deck_size() == 4:
                     raise ValueError("Turn already dealt")
             elif self.current_betting_round == BettingRound.RIVER:
-                if len(self.community_cards) == 5:
+                if self.community_cards.get_deck_size() == 5:
                     raise ValueError("River already dealt")
 
         if self.current_betting_round == BettingRound.FLOP:
@@ -295,7 +295,6 @@ class SingleGame:
 
     def advance_betting_round(self):
         """Advance to the next betting round"""
-
         if self.current_betting_round == BettingRound.NOTSTARTED:
             logger.info(
                 f"Game starting. Betting round advancing from "
@@ -305,43 +304,35 @@ class SingleGame:
             self.current_betting_round = BettingRound.PREFLOP
             # Enlist all players to the list active players
             self.set_active_players()
-            # Reset betting street
+            self.deal_hole_cards()
             self.reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.PREFLOP:
             logger.info(
-                f"Betting round advancing from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}."
-            )
-        elif self.current_betting_round == BettingRound.FLOP:
-            logger.info(
-                f"Advancing betting round from {self.current_betting_round.value} to {BettingRound.FLOP.value}."
-            )
-            if 0 < len(self.get_remaining_betting_street()):
-                logger.error(
-                    f"Cannot advance betting round from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}. Active players yet to act: {self.get_remaining_betting_street()}"
-                )
-                raise ValueError(
-                    f"Cannot advance betting round from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}. Active players yet to act: {self.get_remaining_betting_street()}"
-                )
-            logger.info(
-                f"Betting round advancing from {BettingRound.PREFLOP.value} to {BettingRound.FLOP.value}."
+                f"Betting round advancing from "
+                + f"{BettingRound.PREFLOP.value} to "
+                + f"{BettingRound.FLOP.value}."
             )
             self.current_betting_round = BettingRound.FLOP
+            self.deal_community_cards()
             self.reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.FLOP:
             logger.info(
-                f"Betting round advancing from {BettingRound.FLOP.value} to {BettingRound.TURN.value}."
+                f"Betting round advancing from "
+                + f"{BettingRound.FLOP.value} to "
+                + f"{BettingRound.TURN.value}."
             )
             self.current_betting_round = BettingRound.TURN
+            self.deal_community_cards()
+            self.reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.TURN:
             logger.info(
-                f"Betting round advancing from {BettingRound.TURN.value} to {BettingRound.RIVER.value}."
+                f"Betting round advancing from "
+                + f"{BettingRound.TURN.value} to "
+                + f"{BettingRound.RIVER.value}."
             )
             self.current_betting_round = BettingRound.RIVER
-        elif self.current_betting_round == BettingRound.RIVER:
-            logger.info(
-                f"Betting round advancing from {BettingRound.RIVER.value} to {BettingRound.ENDED.value}."
-            )
-            self.current_betting_round = BettingRound.ENDED
+            self.deal_community_cards()
+            self.reset_betting_street_for_new_round()
         else:
             raise ValueError(
                 f"Invalid call to advance_betting_round(). Current betting round is {self.current_betting_round.value}."
@@ -365,6 +356,22 @@ class SingleGame:
             self.players, self.community_cards
         )
         return 0
+
+    def get_players(self) -> List[Player]:
+        """Get the players"""
+        return self.all_players
+
+    def get_deck(self) -> Deck:
+        """Get the deck"""
+        return self.deck
+
+    def get_discard_pile(self) -> Deck:
+        """Get the discard pile"""
+        return self.discard_pile
+
+    def get_community_cards(self) -> Deck:
+        """Get the community cards"""
+        return self.community_cards
 
     def get_pot(self):
         """Get the total amount in the pot"""
