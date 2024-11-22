@@ -34,6 +34,7 @@ class Bet:
 class SingleGame:
     def __init__(
         self,
+        id: int = 0,
         big_blind_bet: int = 20,
     ):
         def _validate_big_blind(big_blind_bet: int):
@@ -43,13 +44,16 @@ class SingleGame:
                 raise ValueError("Big blind bet must be even")
 
         _validate_big_blind(big_blind_bet)
-
+        self.id = id
         self.big_blind_bet: int = big_blind_bet
         self.small_blind_bet: int = big_blind_bet / 2
         self.all_players: List[Player] = []
         self.active_players: List[Player] = []
         self.current_betting_street_players: List[Player] = []
         self.deck = Deck()
+        self.deck_order_as_list: List[str] = []
+        for card in self.deck.get_cards():
+            self.deck_order_as_list.append(card.verbose_name)
         self.current_betting_round = BettingRound.NOTSTARTED
         self.discard_pile: Deck = Deck(new_deck=False)
         self.community_cards: Deck = Deck(new_deck=False)
@@ -309,6 +313,9 @@ class SingleGame:
             self.current_betting_round = BettingRound.RIVER
             self.deal_community_cards()
             self._reset_betting_street_for_new_round()
+        elif self.current_betting_round == BettingRound.RIVER:
+            self.current_betting_round = BettingRound.ENDED
+            logger.debug(f"Advancing betting round to {BettingRound.ENDED.value}.")
         else:
             raise ValueError(
                 f"Invalid call to advance_betting_round(). Current betting round is {self.current_betting_round.value}."
@@ -360,6 +367,9 @@ class SingleGame:
 
     def get_deck(self) -> Deck:
         return self.deck
+
+    def get_deck_order_as_list_of_verbose_names(self) -> List[str]:
+        return self.deck_order_as_list
 
     def get_discard_pile(self) -> Deck:
         return self.discard_pile

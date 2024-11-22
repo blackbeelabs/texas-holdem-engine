@@ -4,18 +4,11 @@ from engine.classes.Deck import Deck
 from engine.classes.SingleGame import SingleGame, PlayerAction
 
 from engine.classes.Card import VERBOSE_NAMES
-
-import pytest
-from engine.classes.Player import Player
-from engine.classes.Deck import Deck
-from engine.classes.SingleGame import SingleGame, PlayerAction
-
-from engine.classes.Card import VERBOSE_NAMES
 from loguru import logger
 
 
 @pytest.fixture
-def ended_game():
+def river_game():
     game = SingleGame(big_blind_bet=2)
     player1 = Player(player_id=1, player_name="John", starting_stack=10)
     player2 = Player(player_id=2, player_name="Jane", starting_stack=10)
@@ -25,7 +18,6 @@ def ended_game():
     game.advance_betting_round()  # preflop to flop
     game.advance_betting_round()  # flop to turn
     game.advance_betting_round()  # turn to river
-    game.advance_betting_round()  # river to ended
     return game
 
 
@@ -34,8 +26,8 @@ PART 1: Game, Round
 """
 
 
-def test_ended_betting_round_is_ended(ended_game):
-    assert ended_game.get_betting_round() == "ended"
+def test_river_betting_round_is_river(river_game):
+    assert river_game.get_betting_round() == "river"
 
 
 """

@@ -65,6 +65,13 @@ def test_notstarted_game_has_all_cards(notstarted_game):
     assert notstarted_game.get_deck() == test_deck
 
 
+def test_notstarted_game_has_shuffled_deck():
+    """Test that two new games don't have identical card order"""
+    game1 = SingleGame()
+    game2 = SingleGame()
+    assert game1.get_deck() != game2.get_deck()
+
+
 def test_notstarted_game_has_no_community_cards():
     game = SingleGame()
     assert game.get_community_cards().get_deck_size() == 0
@@ -162,3 +169,8 @@ def test_notstarted_game_has_correct_blind_values():
 
 def test_notstarted_game_has_no_players_bets(notstarted_game):
     assert notstarted_game.get_bets() == {}
+
+
+def test_reject_odd_numbered_big_blind():
+    with pytest.raises(ValueError):
+        SingleGame(big_blind_bet=5)
