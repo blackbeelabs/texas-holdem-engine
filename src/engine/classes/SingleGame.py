@@ -1,11 +1,7 @@
 from enum import Enum
-from typing import List, Dict, Optional, Any
-
+from typing import List, Dict, Optional, Any, Tuple
 from engine.classes.Deck import Deck, Card
 from engine.classes.Player import Player
-
-
-# from engine.utils.WinningHandSelector import WinningHandSelector
 from loguru import logger
 
 
@@ -40,31 +36,31 @@ class SingleGame:
         self,
         big_blind_bet: int = 20,
     ):
-        # About the blinds
-        assert big_blind_bet > 0, "Big blind bet must be greater than 0"
-        assert big_blind_bet % 2 == 0, "Big blind bet must be even"
+        def _validate_big_blind(big_blind_bet: int):
+            if big_blind_bet <= 0:
+                raise ValueError("Big blind bet must be greater than 0")
+            if big_blind_bet % 2 != 0:
+                raise ValueError("Big blind bet must be even")
+
+        _validate_big_blind(big_blind_bet)
+
         self.big_blind_bet: int = big_blind_bet
         self.small_blind_bet: int = big_blind_bet / 2
-        # About the players
-        self.all_players: List[Player] = (
-            []
-        )  # Already has the order for the full betting street
+        self.all_players: List[Player] = []
         self.active_players: List[Player] = []
         self.current_betting_street_players: List[Player] = []
-        # About the deck
         self.deck = Deck()
-        # About the betting round, the active players, and the discard pile
         self.current_betting_round = BettingRound.NOTSTARTED
         self.discard_pile: Deck = Deck(new_deck=False)
         self.community_cards: Deck = Deck(new_deck=False)
-        # About the bets
+        self.initial_stack_sizes: List[Tuple[int, int]] = []
         self.bets: Dict[str, List[Bet]] = {}
-        # ...to handle re-raising
         self.current_bet: int = 0
         self.last_raiser_player_index: Optional[int] = None
         self.bets_per_player: Dict[Player, int] = {}
         logger.info("Game initialized.")
 
+    # Private methods
     def _log_state_in_debug_mode(self):
         logger.debug(f"Current betting round: {self.current_betting_round.value}")
         logger.debug(
@@ -79,9 +75,24 @@ class SingleGame:
             f"Stacks per player in current round: {self._stacks_per_player_in_current_round()}"
         )
 
-    def register_player(self, player: Player):
-        """Register a player to the game"""
-        player.update_is_active(True)
+    def _register_player(self, player: Player) -> bool:
+        def _validate_new_player(player: Player) -> None:
+            if player.starting_stack <= 0:
+                err_msg = (
+                    f"Player {player.player_id} ({player.player_name}) has a starting stack of {player.starting_stack}. "
+                    + "Starting stack must be greater than 0."
+                )
+                logger.warning(err_msg)
+                return False
+            if player.player_id in [p.player_id for p in self.all_players]:
+                err_msg = f"Player {player.player_id} ({player.player_name}) has a player_id that collides with an existing player."
+                logger.warning(err_msg)
+                return False
+            return True
+
+        if not _validate_new_player(player):
+            return False
+
         self.all_players.append(player)
         logger.info(
             f"Player {player.player_id} ({player.player_name}) has joined the game."
@@ -89,36 +100,22 @@ class SingleGame:
         logger.debug(
             f"All players: {[player.player_id for player in self.all_players]}"
         )
+        return True
 
-    def register_players(self, players: List[Player]):
-        """Register multiple players to the game"""
-        for player in players:
-            self.register_player(player)
-        logger.info(f"Registered {len(players)} players to the game.")
+    def _initialize_initial_stack_sizes(self):
+        for player in self.all_players:
+            self.initial_stack_sizes.append((player.player_id, player.starting_stack))
 
-    def set_active_players(self):
-        """Set the active players"""
+    def _set_active_players(self):
+        for player in self.all_players:
+            player.active()
         self.active_players = [
             player for player in self.all_players if player.is_active
         ]
 
-    def place_bet(self, player: Player, action: PlayerAction, amount: int):
-        """Place a bet"""
-        player.bet(amount)
-        if 0 < amount:
-            current_round_bets = self.bets.get(self.current_betting_round.value, [])
-            current_round_bets.append(Bet(player, amount))
-            self.bets[self.current_betting_round.value] = current_round_bets
-            logger.info(f"Player {player.player_id} has placed a bet of {amount}.")
-        else:
-            logger.info(f"Player {player.player_id} has checked.")
-        self.update_betting_street_on_bet(player, action)
-
     def _post_small_blind(self):
         small_blind_player = self.get_next_actionable_player()
         self.place_bet(small_blind_player, PlayerAction.BLIND, self.small_blind_bet)
-        # Add small blind player to betting street. He needs to call the big blind
-        # to stay in the game.
         small_blind_player.yet_to_act()
         self.add_player_to_end_of_betting_street(small_blind_player)
 
@@ -127,38 +124,11 @@ class SingleGame:
             self.get_next_actionable_player(), PlayerAction.BLIND, self.big_blind_bet
         )
 
-    def post_blinds(self):
-        if len(self.active_players) < 2:
-            raise ValueError("Not enough players to start a round")
-        """Post small blind"""
-        self._post_small_blind()
-        self._log_state_in_debug_mode()
-        self._post_big_blind()
-        self._log_state_in_debug_mode()
-        logger.info("Small and big blinds have been posted.")
-        self.advance_betting_round()
-
-    def deal_card_to_player(self, player: Player):
-        """Deal a card to a player"""
-        player.receive_card(self.deck.deal())
-        logger.info(f"Dealt 1 card to Player {player.player_id}")
-
-    def deal_hole_cards(self):
-        """Deal two cards to each player"""
+    def _deal_hole_cards(self):
         for _ in range(2):
             for player in self.active_players:
                 self.deal_card_to_player(player)
         logger.info(f"Dealt hole cards to {len(self.active_players)} players")
-
-    def discard_card(self):
-        """Discard a card"""
-        self.discard_pile.add_card(self.deck.deal())
-        logger.info(f"Discarded 1 card")
-
-    def deal_community_card(self):
-        """Deal a community card"""
-        self.community_cards.add_card(self.deck.deal())
-        logger.info(f"Dealt 1 community card")
 
     def _update_betting_street_on_raise(self, player: Player, amount: int):
         pass
@@ -166,7 +136,6 @@ class SingleGame:
     def _validate_player_action(
         self, player_id: int, action: PlayerAction, amount: int = 0
     ):
-        # Validate if player_id is in the game
         if not player_id in [
             player.player_id for player in self.current_betting_street_players
         ]:
@@ -174,13 +143,11 @@ class SingleGame:
                 f"Error processing player action: Player {player_id} is not in the game."
             )
             raise ValueError(f"Player {player_id} is not in the game.")
-        # Validate if player_id is next to act
         if not self.betting_street_players[0].player_id == player_id:
             logger.error(
                 f"Error processing player action: Player {player_id} is not next to act."
             )
             raise ValueError(f"Player {player_id} is not next to act.")
-        # Validate if player has folded
         if not self.betting_street_players[0].is_active:
             logger.error(
                 f"Error processing player action: Player {player_id} has folded."
@@ -199,6 +166,48 @@ class SingleGame:
             for player in self.active_players
         }
 
+    def _reset_betting_street_for_new_round(self):
+        for player in self.active_players:
+            player.yet_to_act()
+        self.current_betting_street_players = [
+            player for player in self.all_players if player.is_active
+        ]
+        self._log_state_in_debug_mode()
+
+    # Public methods
+    def place_bet(self, player: Player, action: PlayerAction, amount: int):
+        player.bet(amount)
+        if 0 < amount:
+            current_round_bets = self.bets.get(self.current_betting_round.value, [])
+            current_round_bets.append(Bet(player, amount))
+            self.bets[self.current_betting_round.value] = current_round_bets
+            logger.info(f"Player {player.player_id} has placed a bet of {amount}.")
+        else:
+            logger.info(f"Player {player.player_id} has checked.")
+        self.update_betting_street_on_bet(player, action)
+
+    def post_blinds(self):
+        if len(self.active_players) < 2:
+            raise ValueError("Not enough players to start a round")
+        self._post_small_blind()
+        self._log_state_in_debug_mode()
+        self._post_big_blind()
+        self._log_state_in_debug_mode()
+        logger.info("Small and big blinds have been posted.")
+        self.advance_betting_round()
+
+    def deal_card_to_player(self, player: Player):
+        player.receive_card(self.deck.deal())
+        logger.info(f"Dealt 1 card to Player {player.player_id}")
+
+    def discard_card(self):
+        self.discard_pile.add_card(self.deck.deal())
+        logger.info(f"Discarded 1 card")
+
+    def deal_community_card(self):
+        self.community_cards.add_card(self.deck.deal())
+        logger.info(f"Dealt 1 community card")
+
     def process_player_action(
         self, player_id: int, action: PlayerAction, amount: int = 0
     ):
@@ -213,32 +222,20 @@ class SingleGame:
                 )
                 raise ValueError("Cannot check when there's an active bet")
         elif action == PlayerAction.CALL:
-            # Player has to topup to current bet amount to call
             max_stack_in_current_betting_round = max(
                 self._stacks_per_player_in_current_round().values()
-            )
-            logger.debug(
-                f"Max stack in current betting round: {max_stack_in_current_betting_round}"
             )
             player_stack_in_current_round = self._stacks_per_player_in_current_round()[
                 player.player_id
             ]
-            logger.debug(
-                f"Player {player.player_id}'s stack in current round: {player_stack_in_current_round}"
-            )
             player_topup_needed_to_call = (
                 max_stack_in_current_betting_round - player_stack_in_current_round
-            )
-            logger.debug(
-                f"Player {player.player_id} has to topup {player_topup_needed_to_call} to successfully call."
             )
             self.place_bet(player, action, player_topup_needed_to_call)
 
         self._log_state_in_debug_mode()
 
     def deal_community_cards(self):
-        """Deal community cards based on current betting round"""
-
         def _check_community_cards_against_betting_round():
             if (
                 self.current_betting_round == BettingRound.PREFLOP
@@ -258,30 +255,17 @@ class SingleGame:
 
         if self.current_betting_round == BettingRound.FLOP:
             _check_community_cards_against_betting_round()
-            # Burn a card
             self.discard_card()
             for _ in range(3):
                 self.deal_community_card()
         elif self.current_betting_round in [BettingRound.TURN, BettingRound.RIVER]:
-            # Burn a card
             self.discard_card()
             self.deal_community_card()
 
-    def reset_betting_street_for_new_round(self):
-        """Reset betting tracking for a new round"""
-        for player in self.active_players:
-            player.yet_to_act()
-        self.current_betting_street_players = [
-            player for player in self.all_players if player.is_active
-        ]
-        self._log_state_in_debug_mode()
-
     def add_player_to_end_of_betting_street(self, player: Player):
-        """Add a player to the end of the betting street"""
         self.betting_street_players.append(player)
 
     def update_betting_street_on_bet(self, player: Player, action: PlayerAction):
-        """Update the betting street after a bet"""
         if (
             action == PlayerAction.BLIND
             or action == PlayerAction.CHECK
@@ -294,87 +278,69 @@ class SingleGame:
             ]
 
     def advance_betting_round(self):
-        """Advance to the next betting round"""
         if self.current_betting_round == BettingRound.NOTSTARTED:
-            logger.info(
-                f"Game starting. Betting round advancing from "
-                + f"{BettingRound.NOTSTARTED.value} to "
-                + f"{BettingRound.PREFLOP.value}."
-            )
+            if len(self.all_players) < 2:
+                raise ValueError("Not enough players to start a round")
             self.current_betting_round = BettingRound.PREFLOP
-            # Enlist all players to the list active players
-            self.set_active_players()
-            self.deal_hole_cards()
-            self.reset_betting_street_for_new_round()
+            self._set_active_players()
+            self._deal_hole_cards()
+            self._reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.PREFLOP:
-            logger.info(
-                f"Betting round advancing from "
-                + f"{BettingRound.PREFLOP.value} to "
-                + f"{BettingRound.FLOP.value}."
-            )
             self.current_betting_round = BettingRound.FLOP
             self.deal_community_cards()
-            self.reset_betting_street_for_new_round()
+            self._reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.FLOP:
-            logger.info(
-                f"Betting round advancing from "
-                + f"{BettingRound.FLOP.value} to "
-                + f"{BettingRound.TURN.value}."
-            )
             self.current_betting_round = BettingRound.TURN
             self.deal_community_cards()
-            self.reset_betting_street_for_new_round()
+            self._reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.TURN:
-            logger.info(
-                f"Betting round advancing from "
-                + f"{BettingRound.TURN.value} to "
-                + f"{BettingRound.RIVER.value}."
-            )
             self.current_betting_round = BettingRound.RIVER
             self.deal_community_cards()
-            self.reset_betting_street_for_new_round()
+            self._reset_betting_street_for_new_round()
         else:
             raise ValueError(
                 f"Invalid call to advance_betting_round(). Current betting round is {self.current_betting_round.value}."
             )
 
     def get_next_actionable_player(self):
-        """Get the next actionable player"""
         return self.current_betting_street_players[0]
 
     def get_remaining_betting_street(self) -> List[int]:
-        """Get the remaining player actions for the current betting round"""
         return [
             player.player_id
             for player in self.players
             if player.is_active and not player.has_acted
         ]
 
-    def resolve_winner(self):
-        """Resolve the winner of the current betting round"""
-        winning_player = WinningHandSelector.select_winner(
-            self.players, self.community_cards
-        )
-        return 0
+    def register_players(self, *players: Player):
+        logger.info(f"Registering {len(players)} players to the game.")
+        for player in players:
+            self._register_player(player)
+        logger.info(f"Registered {len(players)} players to the game.")
+        self._initialize_initial_stack_sizes()
+        logger.info(f"Initial stack sizes: {self.initial_stack_sizes}")
+        self._log_state_in_debug_mode()
+
+    # Getter methods
+    def get_betting_round(self) -> str:
+        return self.current_betting_round.value
 
     def get_players(self) -> List[Player]:
-        """Get the players"""
         return self.all_players
 
+    def get_active_players(self) -> List[Player]:
+        return self.active_players
+
     def get_deck(self) -> Deck:
-        """Get the deck"""
         return self.deck
 
     def get_discard_pile(self) -> Deck:
-        """Get the discard pile"""
         return self.discard_pile
 
     def get_community_cards(self) -> Deck:
-        """Get the community cards"""
         return self.community_cards
 
     def get_pot(self):
-        """Get the total amount in the pot"""
         if len(self.bets) == 0:
             return 0
         return sum(
@@ -382,25 +348,24 @@ class SingleGame:
         )
 
     def get_last_raiser_index(self):
-        """Get the index of the last player who raised"""
         for i in range(len(self.players) - 1, -1, -1):
             if self.players[i].has_acted:
                 return i
         return 0
 
     def get_last_bet_amount(self):
-        """Get the amount of the last bet in the current betting round"""
         return self.bets[-1].amount
 
     def get_current_state(self) -> Dict[str, Any]:
-        """Return a dictionary with the current state of the game"""
         return {
             "current_betting_round": self.current_betting_round.value,
             "players": [str(player) for player in self.players],
             "community_cards": [str(card) for card in self.community_cards],
-            # "deck": str(self.deck),
             "pot": self.get_pot(),
         }
+
+    def resolve_winner(self):
+        pass
 
     def __str__(self) -> str:
         return str(self.get_current_state())
