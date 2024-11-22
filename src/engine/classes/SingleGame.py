@@ -76,7 +76,7 @@ class SingleGame:
         )
 
     def _register_player(self, player: Player) -> bool:
-        def _validate_new_player(player: Player) -> None:
+        def _validate_new_player(player: Player) -> bool:
             if player.starting_stack <= 0:
                 err_msg = (
                     f"Player {player.player_id} ({player.player_name}) has a starting stack of {player.starting_stack}. "
@@ -84,15 +84,24 @@ class SingleGame:
                 )
                 logger.warning(err_msg)
                 return False
-            if player.player_id in [p.player_id for p in self.all_players]:
+            elif player.player_id in [p.player_id for p in self.all_players]:
                 err_msg = f"Player {player.player_id} ({player.player_name}) has a player_id that collides with an existing player."
+                logger.warning(err_msg)
+                return False
+            elif player.player_name == "":
+                err_msg = f"Player {player.player_id} ({player.player_name}) has an empty player_name."
                 logger.warning(err_msg)
                 return False
             return True
 
         if not _validate_new_player(player):
+            logger.error(
+                f"Player {player.player_id} ({player.player_name}) failed validation."
+            )
             return False
-
+        logger.error(
+            f"Player {player.player_id} ({player.player_name}) passed validation."
+        )
         self.all_players.append(player)
         logger.info(
             f"Player {player.player_id} ({player.player_name}) has joined the game."
@@ -186,7 +195,7 @@ class SingleGame:
             logger.info(f"Player {player.player_id} has checked.")
         self.update_betting_street_on_bet(player, action)
 
-    def post_blinds(self):
+    def _post_blinds(self):
         if len(self.active_players) < 2:
             raise ValueError("Not enough players to start a round")
         self._post_small_blind()
@@ -194,7 +203,6 @@ class SingleGame:
         self._post_big_blind()
         self._log_state_in_debug_mode()
         logger.info("Small and big blinds have been posted.")
-        self.advance_betting_round()
 
     def deal_card_to_player(self, player: Player):
         player.receive_card(self.deck.deal())
@@ -282,15 +290,19 @@ class SingleGame:
             if len(self.all_players) < 2:
                 raise ValueError("Not enough players to start a round")
             self.current_betting_round = BettingRound.PREFLOP
+            logger.debug(f"Advancing betting round to {BettingRound.PREFLOP.value}.")
             self._set_active_players()
             self._deal_hole_cards()
             self._reset_betting_street_for_new_round()
+            self._post_blinds()
         elif self.current_betting_round == BettingRound.PREFLOP:
             self.current_betting_round = BettingRound.FLOP
+            logger.debug(f"Advancing betting round to {BettingRound.FLOP.value}.")
             self.deal_community_cards()
             self._reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.FLOP:
             self.current_betting_round = BettingRound.TURN
+            logger.debug(f"Advancing betting round to {BettingRound.TURN.value}.")
             self.deal_community_cards()
             self._reset_betting_street_for_new_round()
         elif self.current_betting_round == BettingRound.TURN:
@@ -314,22 +326,37 @@ class SingleGame:
 
     def register_players(self, *players: Player):
         logger.info(f"Registering {len(players)} players to the game.")
+        r = 0
         for player in players:
             self._register_player(player)
-        logger.info(f"Registered {len(players)} players to the game.")
+            r += 1
+        logger.info(f"Registered {r} players to the game.")
         self._initialize_initial_stack_sizes()
         logger.info(f"Initial stack sizes: {self.initial_stack_sizes}")
         self._log_state_in_debug_mode()
 
     # Getter methods
+
+    def get_big_blind_bet(self):
+        return self.big_blind_bet
+
+    def get_small_blind_bet(self):
+        return self.small_blind_bet
+
     def get_betting_round(self) -> str:
         return self.current_betting_round.value
 
     def get_players(self) -> List[Player]:
         return self.all_players
 
+    def count_players(self) -> int:
+        return len(self.all_players)
+
     def get_active_players(self) -> List[Player]:
         return self.active_players
+
+    def count_active_players(self) -> int:
+        return len(self.active_players)
 
     def get_deck(self) -> Deck:
         return self.deck
@@ -346,6 +373,9 @@ class SingleGame:
         return sum(
             [bet.amount for bet in self.bets.get(self.current_betting_round.value, [])]
         )
+
+    def get_bets(self):
+        return self.bets
 
     def get_last_raiser_index(self):
         for i in range(len(self.players) - 1, -1, -1):

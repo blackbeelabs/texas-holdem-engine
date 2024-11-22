@@ -22,10 +22,10 @@ def test_ended_game_has_all_cards():
         player_name="Jim",
     )
     game.register_players(player1, player2, player3)
-    game.advance_betting_round()  # New game to Preflop
+    game.advance_betting_round()  # Not Started to Preflop
     game.advance_betting_round()  # Preflop to Flop
     game.advance_betting_round()  # Flop to Turn
-    game.advance_betting_round()  # Turn to River
+    game.advance_betting_round()  # Turn to river
 
     test_deck = Deck(new_deck=False)
     for player in game.get_players():
