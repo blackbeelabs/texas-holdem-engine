@@ -6,7 +6,7 @@ from engine.classes.SingleGame import SingleGame, PlayerAction
 from engine.classes.Card import VERBOSE_NAMES
 
 
-def test_new_game_has_all_cards():
+def test_notstarted_game_has_all_cards():
 
     game = SingleGame()
     player1 = Player(
@@ -30,9 +30,10 @@ def test_new_game_has_all_cards():
     assert set([card.verbose_name for card in test_deck.get_cards()]) == set(
         VERBOSE_NAMES
     )
+    assert game.get_deck() == test_deck
 
 
-def test_game_has_all_cards_after_dealing_hole_cards():
+def test_notstarted_game_has_all_cards_after_dealing_hole_cards():
 
     game = SingleGame()
     player1 = Player(
@@ -48,7 +49,7 @@ def test_game_has_all_cards_after_dealing_hole_cards():
         player_name="Jim",
     )
     player4 = Player(
-        player_id=3,
+        player_id=4,
         player_name="Jill",
     )
     game.register_players(player1, player2, player3, player4)
@@ -59,46 +60,6 @@ def test_game_has_all_cards_after_dealing_hole_cards():
     for player in game.get_players():
         for card in player.get_hand().get_cards():
             test_deck.add_card(card)
-    assert test_deck.get_deck_size() == 52
-    assert set([card.verbose_name for card in test_deck.get_cards()]) == set(
-        VERBOSE_NAMES
-    )
-
-
-def test_completed_game_has_all_cards():
-
-    game = SingleGame()
-    player1 = Player(
-        player_id=1,
-        player_name="John",
-    )
-    player2 = Player(
-        player_id=2,
-        player_name="Jane",
-    )
-    player3 = Player(
-        player_id=3,
-        player_name="Jim",
-    )
-    game.register_players(player1, player2, player3)
-    game.advance_betting_round()  # New game to Preflop
-    game.advance_betting_round()  # Preflop to Flop
-    game.advance_betting_round()  # Flop to Turn
-    game.advance_betting_round()  # Turn to River
-
-    test_deck = Deck(new_deck=False)
-    for player in game.get_players():
-        for card in player.get_hand().get_cards():
-            test_deck.add_card(card)
-    # Community cards
-    for card in game.get_community_cards().get_cards():
-        test_deck.add_card(card)
-    # Discard pile
-    for card in game.get_discard_pile().get_cards():
-        test_deck.add_card(card)
-    # Remaining deck
-    for card in game.get_deck().get_cards():
-        test_deck.add_card(card)
     assert test_deck.get_deck_size() == 52
     assert set([card.verbose_name for card in test_deck.get_cards()]) == set(
         VERBOSE_NAMES
@@ -178,7 +139,7 @@ def test_correct_number_of_active_players():
     player3 = Player(player_id=3, player_name="Jim", starting_stack=10)
     game.register_players(player1, player2, player3)
     game.advance_betting_round()
-    assert len(game.get_players()) == 3
+    assert len(game.get_active_players()) == 3
 
 
 def test_reject_game_start_when_less_than_two_players_are_registered():
@@ -189,6 +150,21 @@ def test_reject_game_start_when_less_than_two_players_are_registered():
         game.advance_betting_round()
 
 
-def test_betting_round_is_new_game():
+def test_notstarted_betting_round_is_notstarted():
     game = SingleGame()
     assert game.get_betting_round() == "notstarted"
+
+
+def test_notstarted_game_has_no_community_cards():
+    game = SingleGame()
+    assert game.get_community_cards().get_deck_size() == 0
+
+
+def test_notstarted_game_has_no_discarded_cards():
+    game = SingleGame()
+    assert game.get_discard_pile().get_deck_size() == 0
+
+
+def test_notstarted_game_has_pot_of_zero():
+    game = SingleGame()
+    assert game.get_pot() == 0

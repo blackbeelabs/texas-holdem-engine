@@ -48,7 +48,17 @@ class Deck:
         """use str() if not you'll get only the card address"""
         return [str(card) for card in self.cards]
 
+    def _get_cards_as_concatenated_string(self) -> str:
+        """use str() if not you'll get only the card address"""
+        return ", ".join(self._get_cards_as_list())
+
     def __str__(self) -> str:
         if self.empty():
             return "Deck([])"
         return f"Deck([{', '.join(self._get_cards_as_list())}])"
+
+    def __eq__(self, other: "Deck") -> bool:
+        return (
+            self._get_cards_as_concatenated_string()
+            == other._get_cards_as_concatenated_string()
+        )
